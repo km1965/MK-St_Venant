@@ -1,5 +1,7 @@
 # MK-St_Venant — Automatisation & Vérifications Hydrauliques des Ventouses et Vidanges
 
+> **Version courante : 1.2.0** — voir [CHANGELOG.md](CHANGELOG.md).
+
 Application Python 3.10 – 3.14 avec interface graphique moderne **CustomTkinter** dédiée au dimensionnement, à la vérification et à l'audit hydraulique des organes de sécurité (points hauts et points bas) pour les adductions d'eau (BR3_LOT 8 et tout projet d'adduction sous pression).
 
 L'application intègre les **formules physiques exactes corrigées**, rectifiant l'ensemble des erreurs décelées dans les notes d'entreprises antérieures (coefficients de vidange erronés, célérité d'Allievi, loi compressible de Saint-Venant, calculs de dépression motrice en casse franche).
@@ -13,17 +15,19 @@ L'application intègre les **formules physiques exactes corrigées**, rectifiant
 - **Fonction 2 — Remplissage de la conduite** : Contrôle du débit d'air refoulé à vitesse contrôlée ($V = 0,5\text{ m/s}$, soit $5\,655\text{ m}^3/\text{h}$ pour DN 2000 mm). Vérification sous surpression de 1 mCE et proposition automatique d'un équipement suffisant (ex: 2 ventouses PAM DN 200 pour couvrir le débit).
 - **Fonction 3 — Casse franche / Vidange d'urgence (Strickler-Bernoulli)** : Calcul de la dénivelée motrice active $H = \max(0\,;\, \text{Cote}_{ventouse} - \Delta P_{admiss} - \text{Cote}_{vidange})$ sous dépression maximale de 3 mCE. Débit d'air d'admission gravitationnel pour les branches amont et aval.
 - **Algorithme d'optimisation d'équipements** : Proposition automatique de la combinaison optimale (ventouses triple fonction type PAM + clapets d'entrée d'air grand débit type SNH DN 100 à DN 250) garantissant 100% de conformité.
+- **Trois bases catalogue permutables** : CEAI/SNH (référence), PAM/SNH (existant) et **MCP** (`Tableau_Recapitulatif_Debits_Ventouses_MCP.xlsx`, ventouses doubles orifices 3 fonctions). Les débits MCP sont exploités à 0,3 bar pour l'admission (≈ 3 mCE) et 0,1 bar pour l'évacuation (≈ 1 mCE) ; débits critiques, courbes, dimensions, poids et montages en chandelier sont également affichés dans l'onglet Catalogue.
 
 ### 2. 💧 Points Bas (Ouvrages de vidange)
-- **Formule exacte corrigée pour vidange en 2 heures ($t = 7\,200\text{ s}$)** :
-  $$d\text{ (mm)} = 6{,}69 \times D \times \sqrt{\frac{L_{am} + L_{av}}{\sqrt{h_{moy}}}}$$
-  *(Correction du coefficient 13,39 qui correspondait à une vidange en 30 min, et du coefficient 9,47).*
+- **Formule exacte corrigée, recalculée pour le temps cible saisi** ($t$ en heures, $K = 0{,}70$) :
+  $$d\text{ (mm)} = \underbrace{\frac{1000}{\sqrt{t \cdot 3600 \cdot K \cdot \sqrt{2g}}}}_{\text{6,693 pour 2 h ; 9,465 pour 1 h}} \times D \times \sqrt{\frac{L_{am} + L_{av}}{\sqrt{h_{moy}}}}$$
+  *(Correction du coefficient 13,39 de l'ancienne note qui correspondait à une vidange en 30 min. Aucun coefficient n'est figé à 2 h : le temps cible modifie bien le diamètre exigé.)*
 - **Hauteur moyenne pondérée des deux branches** :
   $$h_{moy} = \frac{L_{am} \frac{H_{am}}{2} + L_{av} \frac{H_{av}}{2}}{L_{am} + L_{av}}$$
-- **Calcul du temps réel de vidange** $t_{reel}$ selon le DN retenu en projet et détection des sous-dimensionnements du DN 400 uniformisé (ex: PM 52 621,59 qui nécessite un DN 500 pour ne pas dépasser 2h).
+- **DN retenu imposé égal au DN recommandé (mode auto)** : dès que le temps cible change, le diamètre normalisé est recalculé et appliqué à tous les points bas. Un mode manuel reste disponible dans la boîte de dialogue d'un point bas (case « Imposer le DN recommandé ») et via « Tester DN 400 Uniformisé ». Anciens projets : un DN manuel existant est préservé.
+- **Calcul du temps réel de vidange** $t_{reel} = t \times (d_{exact} / DN_{retenu})^2$ selon le DN réellement posé, avec détection des sous-dimensionnements.
 
 ### 3. ⚡ Laboratoire & Simulateurs Unitaires
-- Calculateur de célérité d'Allievi en temps réel pour tous matériaux (PRV, Fonte ductile, Acier, PEHD, Béton).
+- Calculateur de célérité d'Allievi en temps réel pour tous matériaux (PRV, PVC, Fonte ductile, Acier, PEHD, Béton).
 - Simulateur thermodynamique de Saint-Venant (orifice, débit volumique/massique, transition subsonique/sonique).
 - Simulateur de casse franche unitaire avec recommandation immédiate d'équipement.
 - Simulateur de vidange unitaire avec table comparative de durées selon tous les diamètres standards.
@@ -31,18 +35,22 @@ L'application intègre les **formules physiques exactes corrigées**, rectifiant
 ### 4. 📈 Visualisations Graphiques Intégrées
 - **Profil en long hydraulique interactif** : tracé altimétrique complet de l'adduction, positionnement des ventouses et vidanges géoréférencées avec codes couleur de conformité (vert / rouge).
 - **Diagramme comparatif des débits d'air** : Débit requis vs Débit admis équipé.
-- **Diagramme des temps réels de vidange** : Comparaison directe au seuil contractuel de 2h.
+- **Diagramme des temps réels de vidange** : Comparaison directe au temps cible contractuel saisi.
 - **Courbe d'écoulement de Saint-Venant**.
 
 ### 5. 📥 Imports & 📤 Exports Professionnels
 - **Import XLSX** : Lecture automatique de fichiers Excel avec détection intelligente des colonnes.
-- **Export XLSX** : Classeur Excel de calculs complet à 4 feuilles stylisées (Synthèse, Ventouses, Vidanges, Catalogue).
-- **Export DOCX** : Rapport officiel d'ingénierie et d'expertise complet (en-tête, tableau de bord, justifications théoriques, tableaux recalculés, figures graphiques insérées en haute résolution).
+- **Export XLSX** : Classeur Excel de calculs complet à 5 feuilles stylisées (Synthèse, Données Projet, Ventouses, Vidanges, Catalogue MCP inclus).
+- **Export DOCX** : Rapport officiel d'ingénierie et d'expertise complet (identité du projet, préambule, introduction, justifications théoriques, tableaux recalculés, figures graphiques insérées en haute résolution).
 - **Export Graphiques HD** : Pack d'images PNG 300 DPI ou PDF prêt pour impression.
 - **Gabarit Vierge** : Génération en un clic d'un template Excel type `Template_Import_Hydraulique.xlsx`.
 
-### 6. 💾 Projet, Menu & Aide
-- **Sauvegarde/Ouverture de projet** natif `.mkst.json` : conserve paramètres, base catalogue air, points importés/saisis et choix retenus (DN/équipements), puis recalcule à l’ouverture.
+### 6. 📋 Données du Projet & Rapports
+- **Onglet « Données du Projet »** : Maître d'Ouvrage (MO), maîtrise d'œuvre, BET, lieu/commune/province/pays, marché, responsable, date, référence, ainsi que les textes libres d'**introduction** et de **préambule**.
+- Ces informations sont reprises automatiquement dans le rapport Word (section 1) et dans la feuille « Données Projet » du classeur Excel exporté ; un texte standard est généré si les champs sont vides.
+
+### 7. 💾 Projet, Menu & Aide
+- **Sauvegarde/Ouverture de projet** natif `.mkst.json` : conserve paramètres, identité du projet, base catalogue air, points importés/saisis et choix retenus (DN/équipements), puis recalcule à l’ouverture.
 - **Barre de menu** Fichier/Affichage/Aide avec raccourcis (`Ctrl+N/O/S/Shift+S/I/Q`) et indicateur de modifications non enregistrées (`*`).
 - **Onglet À propos & Aide utilisateur** intégré (workflow, catalogues, bonnes pratiques anti-perte, dépannage).
 
@@ -59,10 +67,11 @@ MK-St_Venant/
 ├── core/                                      # Moteurs de calculs et gestion des données
 │   ├── __init__.py
 │   ├── hydraulic_models.py                    # Allievi, Saint-Venant, Strickler-Bernoulli, Vidange pondérée
-│   ├── catalog.py                             # Spécifications PAM, SNH et diamètres normalisés
+│   ├── catalog.py                             # Spécifications PAM, SNH, PVC et diamètres normalisés
+│   ├── catalog_mcp.py                         # Catalogue MCP (Excel) : courbes, DN, débits et recommandation
 │   ├── catalogues_ceai_snh.py                 # Catalogue/référence CEAI/SNH et sélection d'équipements
 │   ├── tables.py                              # Tables de compatibilité catalogue
-│   ├── project_data.py                        # Modèles de données, calculs, sauvegarde/ouverture projet (.mkst.json)
+│   ├── project_data.py                        # Modèles de données (dont ProjectIdentity), calculs, sauvegarde/ouverture projet (.mkst.json)
 │   ├── sample_data.py                         # Jeu de données de référence issu de l'audit BR3_LOT 8
 │   ├── excel_manager.py                       # Import et export XLSX stylisés (openpyxl)
 │   ├── chart_generator.py                     # Profil en long et graphiques (matplotlib)
@@ -75,7 +84,8 @@ MK-St_Venant/
 │   ├── drains_view.py                         # Tableau interactif des points bas (vidanges)
 │   ├── simulator_view.py                      # Simulateur interactif unitaire (laboratoire)
 │   ├── profile_view.py                        # Canvas interactif du profil en long
-│   ├── catalog_view.py                        # Catalogue des matériels standards
+│   ├── catalog_view.py                        # Catalogue des matériels standards (dont onglet MCP)
+│   ├── project_info_view.py                   # Données du projet (MO, BET, lieu, intro, préambule)
 │   ├── report_view.py                         # Gestionnaire d'import et d'export
 │   └── about_view.py                          # À propos & aide utilisateur
 ├── main.py                                    # Script de démarrage principal (icône fenêtre)

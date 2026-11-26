@@ -20,6 +20,7 @@ import math
 from dataclasses import dataclass
 
 from .tables import TABLE_PAM, TABLE_SNH
+from .catalog_mcp import recommander_equipement_mcp
 
 SOURCE_DOCX = "Catalogue des équipements.docx"
 ORIGINE_FIRM = "FIRM V1/2025"
@@ -239,10 +240,12 @@ def plus_grand_purgeur_sonique() -> OrganeAir:
 # ------------------------------------------------------------------------------
 CATALOG_PAM_SNH = "PAM_SNH"
 CATALOG_CEAI_SNH = "CEAI_SNH"
+CATALOG_MCP = "MCP"
 
 CATALOG_CONFIG_LABELS: dict[str, str] = {
     CATALOG_PAM_SNH: "PAM/SNH (existant)",
     CATALOG_CEAI_SNH: "CEAI/SNH (référence)",
+    CATALOG_MCP: "MCP (catalogue Excel)",
 }
 
 DEFAULT_AIR_CATALOG_CONFIG = CATALOG_CEAI_SNH
@@ -439,6 +442,8 @@ def recommander_equipement_air(
     """Point d'entrée unique de recommandation selon la base catalogue choisie."""
     if catalog_config == CATALOG_CEAI_SNH:
         return recommander_equipement_ceai_snh(debit_m3s, dn_conduite_m, v_filling_ms)
+    if catalog_config == CATALOG_MCP:
+        return recommander_equipement_mcp(debit_m3s, dn_conduite_m, v_filling_ms)
 
     # Existant / audit : PAM/SNH
     from .catalog import recommend_air_valve_equipment

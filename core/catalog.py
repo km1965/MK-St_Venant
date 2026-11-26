@@ -116,6 +116,12 @@ PIPE_MATERIALS: Dict[str, Dict[str, float]] = {
         "default_thickness_ratio": 0.0175,  # e = 35mm pour DN2000
         "default_roughness_m": 0.00003
     },
+    "PVC (Polychlorure de Vinyle)": {
+        "E_Pa": 3.0e9,
+        "Ks": 100.0,
+        "default_thickness_ratio": 0.030,
+        "default_roughness_m": 0.00001
+    },
     "Fonte ductile": {
         "E_Pa": 170.0e9,
         "Ks": 100.0,

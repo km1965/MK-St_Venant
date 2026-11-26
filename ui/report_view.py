@@ -221,6 +221,7 @@ class ReportView(ctk.CTkFrame):
             # Mettre à jour le projet existant
             self.project.name = new_proj.name
             self.project.description = new_proj.description
+            self.project.identity = new_proj.identity
             self.project.dn_main_conduite_m = new_proj.dn_main_conduite_m
             self.project.pipe_material = new_proj.pipe_material
             self.project.pipe_thickness_m = new_proj.pipe_thickness_m

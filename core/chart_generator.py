@@ -144,7 +144,7 @@ def plot_drain_times_comparison(project: HydraulicProject, filepath: Optional[st
     x = np.arange(len(labels))
     bars = ax.bar(x, times, width=0.5, color=colors, edgecolor='#2D3436', linewidth=1.0)
 
-    # Ligne cible 2h
+    # Ligne du temps cible saisi (2 h par défaut)
     ax.axhline(y=project.target_drain_time_hours, color='#E17055', linestyle='--', linewidth=2.0,
                label=f"Objectif de vidange = {project.target_drain_time_hours:.1f} heures")
 

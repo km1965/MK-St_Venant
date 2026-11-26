@@ -13,7 +13,6 @@ from core.catalog import PIPE_MATERIALS, STANDARD_DRAIN_DIAMETERS_MM
 from core.catalogues_ceai_snh import (
     CATALOG_CEAI_SNH,
     CATALOG_CONFIG_LABELS,
-    CATALOG_PAM_SNH,
     DEFAULT_AIR_CATALOG_CONFIG,
     recommander_equipement_air,
 )
@@ -256,8 +255,7 @@ class SimulatorView(ctk.CTkFrame):
 
         ctk.CTkLabel(left, text="Base catalogue organes d'air :", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15, pady=(5, 0))
         catalog_label_to_key = {
-            CATALOG_CONFIG_LABELS[CATALOG_PAM_SNH]: CATALOG_PAM_SNH,
-            CATALOG_CONFIG_LABELS[CATALOG_CEAI_SNH]: CATALOG_CEAI_SNH,
+            label: key for key, label in CATALOG_CONFIG_LABELS.items()
         }
         combo_catalog = ctk.CTkComboBox(left, values=list(catalog_label_to_key.keys()))
         combo_catalog.set(CATALOG_CONFIG_LABELS.get(DEFAULT_AIR_CATALOG_CONFIG, CATALOG_CONFIG_LABELS[CATALOG_CEAI_SNH]))

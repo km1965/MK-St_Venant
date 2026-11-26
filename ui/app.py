@@ -20,6 +20,7 @@ from ui.drains_view import DrainsView
 from ui.simulator_view import SimulatorView
 from ui.profile_view import ProfileView
 from ui.catalog_view import CatalogView
+from ui.project_info_view import ProjectInfoView
 from ui.report_view import ReportView
 from ui.about_view import AboutView
 
@@ -87,6 +88,7 @@ class MainApplication(ctk.CTk):
         view_menu.add_command(label="Points hauts (ventouses)", command=lambda: self._select_view("air_valves"))
         view_menu.add_command(label="Points bas (vidanges)", command=lambda: self._select_view("drains"))
         view_menu.add_command(label="Profil & graphiques", command=lambda: self._select_view("profile"))
+        view_menu.add_command(label="Données du projet", command=lambda: self._select_view("project_info"))
         view_menu.add_separator()
         theme_menu = tk.Menu(view_menu, tearoff=0)
         theme_menu.add_command(label="Sombre", command=lambda: self._change_appearance_mode("Dark"))
@@ -116,7 +118,7 @@ class MainApplication(ctk.CTk):
     def _build_sidebar(self):
         self.sidebar_frame = ctk.CTkFrame(self, width=240, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(9, weight=1)
+        self.sidebar_frame.grid_rowconfigure(11, weight=1)
 
         # Logo / Titre
         app_title = ctk.CTkLabel(
@@ -144,9 +146,10 @@ class MainApplication(ctk.CTk):
             ("drains", "💧 Points Bas (Vidanges)", 4),
             ("simulator", "⚡ Simulateur Unitaire", 5),
             ("profile", "📈 Profil & Graphiques", 6),
-            ("catalog", "📚 Catalogue Équipements", 7),
-            ("reports", "📥 Imports / 📤 Exports", 8),
-            ("about", "ℹ️ À propos & Aide", 9),
+            ("project_info", "📋 Données du Projet", 7),
+            ("catalog", "📚 Catalogue Équipements", 8),
+            ("reports", "📥 Imports / 📤 Exports", 9),
+            ("about", "ℹ️ À propos & Aide", 10),
         ]
 
         for key, text, r in nav_items:
@@ -167,7 +170,7 @@ class MainApplication(ctk.CTk):
 
         # Bas de sidebar
         bottom_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
-        bottom_frame.grid(row=10, column=0, padx=15, pady=(10, 20), sticky="ew")
+        bottom_frame.grid(row=11, column=0, padx=15, pady=(10, 20), sticky="ew")
 
         btn_save = ctk.CTkButton(
             bottom_frame,
@@ -219,6 +222,7 @@ class MainApplication(ctk.CTk):
             "drains": DrainsView(self.container, self.project, self._on_project_updated),
             "simulator": SimulatorView(self.container),
             "profile": ProfileView(self.container, self.project),
+            "project_info": ProjectInfoView(self.container, self.project, self._on_project_updated),
             "catalog": CatalogView(self.container),
             "reports": ReportView(self.container, self.project, self._on_project_updated),
             "about": AboutView(self.container, self.project),
@@ -248,7 +252,7 @@ class MainApplication(ctk.CTk):
             self.is_dirty = True
         self._update_window_title()
 
-        for key in ("dashboard", "air_valves", "drains", "profile", "reports", "about"):
+        for key in ("dashboard", "air_valves", "drains", "profile", "project_info", "reports", "about"):
             view = self.views.get(key)
             if view and hasattr(view, "refresh"):
                 try:
@@ -260,6 +264,7 @@ class MainApplication(ctk.CTk):
         """Remplace les données du projet courant en conservant l'instance référencée par les vues."""
         self.project.name = new_project.name
         self.project.description = new_project.description
+        self.project.identity = new_project.identity
         self.project.dn_main_conduite_m = new_project.dn_main_conduite_m
         self.project.pipe_material = new_project.pipe_material
         self.project.pipe_thickness_m = new_project.pipe_thickness_m

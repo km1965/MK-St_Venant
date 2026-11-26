@@ -19,6 +19,13 @@ from core.catalogues_ceai_snh import (
     PURGEURS_SONIQUES_SNH,
     VENTOUSES_TRIFON_CEAI,
 )
+from core.catalog_mcp import (
+    NOTES_MCP,
+    SOURCE_XLSX,
+    VENTOUSES_MCP,
+    PRESSION_ADMISSION_REFERENCE,
+    PRESSION_EVACUATION_REFERENCE,
+)
 
 
 class CatalogView(ctk.CTkFrame):
@@ -44,7 +51,7 @@ class CatalogView(ctk.CTkFrame):
             text=(
                 f"Base de référence : {CATALOG_CONFIG_LABELS[CATALOG_CEAI_SNH]} — "
                 f"capacités d'admission à la dépression {PRESSION_REFERENCE}. "
-                "Choix permutable avec PAM/SNH (existant)."
+                "Choix permutable avec PAM/SNH (existant) et MCP (catalogue Excel)."
             ),
             font=ctk.CTkFont(size=12),
             text_color=("gray50", "gray70"),
@@ -58,6 +65,7 @@ class CatalogView(ctk.CTkFrame):
         tabview.pack(fill="both", expand=True, padx=15, pady=5)
 
         tab_trifon = tabview.add("🌬️ Ventouses Trifon CEAI")
+        tab_mcp = tabview.add("🌬️ Ventouses MCP (Excel)")
         tab_clapet_ceai = tabview.add("🚪 Clapets CEAI")
         tab_purge_snh = tabview.add("🫧 Purgeurs soniques SNH")
         tab_pam = tabview.add("🌬️ Ventouses PAM (existant)")
@@ -65,6 +73,7 @@ class CatalogView(ctk.CTkFrame):
         tab_mat = tabview.add("🔩 Matériaux & Canalisations")
 
         self._build_trifon_ceai_tab(tab_trifon)
+        self._build_mcp_tab(tab_mcp)
         self._build_clapets_ceai_tab(tab_clapet_ceai)
         self._build_purgeurs_snh_tab(tab_purge_snh)
         self._build_pam_tab(tab_pam)
@@ -110,6 +119,68 @@ class CatalogView(ctk.CTkFrame):
                 org.origine,
             ))
         tree.pack(fill="both", expand=True)
+
+    def _build_mcp_tab(self, tab):
+        box = ctk.CTkFrame(tab, fg_color="transparent")
+        box.pack(fill="both", expand=True, padx=10, pady=10)
+
+        info = ctk.CTkLabel(
+            box,
+            text=(
+                f"Ventouses automatiques doubles orifices 3 fonctions (type MCP) — source : {SOURCE_XLSX}. "
+                f"Admission retenue à {PRESSION_ADMISSION_REFERENCE}, évacuation au remplissage à "
+                f"{PRESSION_EVACUATION_REFERENCE} ; débits critiques à -0,5 bar / +0,9 bar donnés à titre d'information."
+            ),
+            font=ctk.CTkFont(size=11),
+            text_color=("gray40", "gray70"),
+            wraplength=1000,
+            justify="left",
+        )
+        info.pack(anchor="w", pady=(0, 10))
+
+        cols = ("dn", "serie", "dims", "poids", "adm", "adm_crit", "evac", "evac_crit", "courbe", "notes")
+        tree = ttk.Treeview(box, columns=cols, show="headings", height=11)
+        headers = {
+            "dn": ("DN Ventouse", 120, "w"),
+            "serie": ("Série DN conduite", 110, "center"),
+            "dims": ("L × H × M (mm)", 140, "center"),
+            "poids": ("Poids (kg)", 80, "e"),
+            "adm": ("Admission 0,3 bar (m³/h)", 145, "e"),
+            "adm_crit": ("Admission critique -0,5 bar (m³/h)", 160, "e"),
+            "evac": ("Évacuation 0,1 bar (m³/h)", 145, "e"),
+            "evac_crit": ("Évacuation critique 0,9 bar (m³/h)", 160, "e"),
+            "courbe": ("Courbe", 120, "center"),
+            "notes": ("Observations", 320, "w"),
+        }
+        for c, (t, w, a) in headers.items():
+            tree.heading(c, text=t)
+            tree.column(c, width=w, anchor=a)
+
+        for org in VENTOUSES_MCP:
+            tree.insert("", "end", values=(
+                org.dn_label,
+                org.serie_conduite,
+                org.dimensions_mm,
+                f"{org.poids_kg:g}",
+                f"{org.admission_opt_m3h:,.0f}",
+                f"{org.admission_crit_m3h:,.0f}",
+                f"{org.evacuation_1mce_m3h:,.0f}",
+                f"{org.evacuation_crit_m3h:,.0f}",
+                org.courbe,
+                org.notes,
+            ))
+        tree.pack(fill="both", expand=True)
+
+        notes_lbl = ctk.CTkLabel(
+            box,
+            text="Règles d'ingénierie du catalogue MCP :\n• " + "\n• ".join(NOTES_MCP),
+            font=ctk.CTkFont(size=10),
+            text_color=("gray40", "gray70"),
+            justify="left",
+            wraplength=1100,
+            anchor="w",
+        )
+        notes_lbl.pack(anchor="w", pady=(10, 0))
 
     def _build_clapets_ceai_tab(self, tab):
         box = ctk.CTkFrame(tab, fg_color="transparent")
@@ -292,6 +363,7 @@ class CatalogView(ctk.CTkFrame):
 
         descs = {
             "PRV (Polyester Renforcé Verre)": "Grandes adductions d'eau brute / potable",
+            "PVC (Polychlorure de Vinyle)": "Adductions et distribution sous pression, diamètres moyens",
             "Fonte ductile": "Réseaux sous forte pression et voirie",
             "Acier": "Très hautes pressions et traversées spéciales",
             "PEHD (Polyéthylène Haute Densité)": "Distribution et flexibilité géologique",

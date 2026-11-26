@@ -26,6 +26,26 @@ from core.catalogues_ceai_snh import (
 
 
 @dataclass
+class ProjectIdentity:
+    """Informations administratives du projet, reprises dans les rapports."""
+
+    maitre_ouvrage: str = ""        # MO
+    maitre_oeuvre: str = ""         # Maîtrise d'œuvre
+    bureau_etudes: str = ""         # BET
+    lieu: str = ""
+    commune: str = ""
+    province: str = ""
+    pays: str = ""
+    numero_marche: str = ""
+    annee: str = ""
+    responsable_projet: str = ""
+    date_etude: str = ""
+    reference_dossier: str = ""
+    introduction: str = ""          # Texte d'introduction libre du rapport
+    preamble: str = ""              # Texte de préambule libre du rapport
+
+
+@dataclass
 class AirValvePoint:
     """Représente un point haut équipé de ventouse / clapet."""
     id: int
@@ -161,6 +181,7 @@ class DrainPoint:
     d_exact_mm: float = 0.0
     dn_recommended_mm: int = 400
     dn_retained_mm: int = 400
+    auto_dn_retained: bool = True   # impose le DN recommandé comme DN retenu
     t_real_hours: float = 2.0
     t_real_str: str = "2h00"
     is_compliant: bool = True
@@ -174,6 +195,10 @@ class DrainPoint:
         self.h_amont_m = max(0.0, (self.z_amont - self.z_terrain)) if (self.z_amont is not None and self.z_terrain is not None) else 0.0
         self.h_aval_m = max(0.0, (self.z_aval - self.z_terrain)) if (self.z_aval is not None and self.z_terrain is not None) else 0.0
 
+        # Le DN retenu suit automatiquement le DN recommandé (donc le temps
+        # cible) tant que l'utilisateur n'a pas explicitement imposé un DN
+        # manuel. Le temps réel est alors calculé avec ce DN retenu.
+        dn_controle = None if self.auto_dn_retained else self.dn_retained_mm
         res = calculate_drain_dimensioning(
             dn_pipe_m=self.dn_conduite_m,
             l_upstream_m=self.l_amont_m,
@@ -182,14 +207,14 @@ class DrainPoint:
             h_downstream_m=self.h_aval_m,
             target_time_hours=target_time_hours,
             discharge_coeff_k=discharge_coeff_k,
-            dn_retained_mm=self.dn_retained_mm
+            dn_retained_mm=dn_controle
         )
 
         self.h_moy_m = res["h_moy_m"]
         self.volume_water_m3 = res["v_water_m3"]
         self.d_exact_mm = res["d_exact_mm"]
         self.dn_recommended_mm = res["dn_recommended_mm"]
-        if not self.dn_retained_mm:
+        if self.auto_dn_retained or not self.dn_retained_mm:
             self.dn_retained_mm = self.dn_recommended_mm
 
         # Recalcul temps réel avec dn_retained_mm
@@ -209,6 +234,7 @@ class HydraulicProject:
     """Structure générale d'un projet d'adduction."""
     name: str = "Nouveau projet hydraulique"
     description: str = "Dimensionnement et vérification hydraulique des ventouses et vidanges"
+    identity: ProjectIdentity = field(default_factory=ProjectIdentity)
     dn_main_conduite_m: float = 2.0
     pipe_material: str = "PRV (Polyester Renforcé Verre)"
     pipe_thickness_m: float = 0.035
@@ -301,6 +327,7 @@ class HydraulicProject:
 
         # Conserver les diamètres retenus s'il existait déjà des vidanges au même PM
         existing_retained = {round(d.pm, 2): d.dn_retained_mm for d in self.drains}
+        existing_auto = {round(d.pm, 2): d.auto_dn_retained for d in self.drains}
 
         new_drains: List[DrainPoint] = []
         for idx, pm in enumerate(sorted_drain_pms, 1):
@@ -325,7 +352,8 @@ class HydraulicProject:
                 z_amont=v_up.z_terrain if v_up else None,
                 pm_aval=v_down.pm if v_down else None,
                 z_aval=v_down.z_terrain if v_down else None,
-                dn_retained_mm=retained_dn
+                dn_retained_mm=retained_dn,
+                auto_dn_retained=existing_auto.get(pm, True)
             )
             new_drains.append(drain)
 
@@ -380,8 +408,16 @@ class HydraulicProject:
         """Reconstruit un projet à partir d'un dictionnaire et recalcule les résultats."""
         data = data or {}
         proj_fields = {f.name for f in fields(cls)}
-        base = {k: v for k, v in data.items() if k in proj_fields and k not in ("air_valves", "drains")}
+        base = {k: v for k, v in data.items() if k in proj_fields and k not in ("air_valves", "drains", "identity")}
         project = cls(**cls._filter_fields(cls, base))
+
+        # Identité du projet (compatibilité avec les anciens fichiers où les
+        # champs pouvaient être enregistrés à la racine du projet).
+        identity_data: Dict[str, Any] = dict(data.get("identity") or {})
+        for key in cls._filter_fields(ProjectIdentity, data).keys():
+            if key not in identity_data and data.get(key):
+                identity_data[key] = data[key]
+        project.identity = ProjectIdentity(**cls._filter_fields(ProjectIdentity, identity_data))
 
         raw_valves = data.get("air_valves") or []
         valves: List[AirValvePoint] = []
@@ -396,6 +432,14 @@ class HydraulicProject:
         drains: List[DrainPoint] = []
         for item in raw_drains:
             try:
+                item = dict(item)
+                # Compatibilité avec les anciens projets : un DN retenu
+                # manuel différent du recommandé reste manuel (non écrasé).
+                if "auto_dn_retained" not in item:
+                    retained = item.get("dn_retained_mm")
+                    recommended = item.get("dn_recommended_mm")
+                    if retained and recommended and int(retained) != int(recommended):
+                        item["auto_dn_retained"] = False
                 drains.append(DrainPoint(**cls._filter_fields(DrainPoint, item)))
             except Exception:
                 continue

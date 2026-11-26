@@ -10,8 +10,8 @@ from core.catalog import PIPE_MATERIALS
 from core.catalogues_ceai_snh import (
     CATALOG_CEAI_SNH,
     CATALOG_CONFIG_LABELS,
-    CATALOG_PAM_SNH,
 )
+from core.hydraulic_models import drain_formula_coefficient
 
 
 class DashboardView(ctk.CTkFrame):
@@ -74,8 +74,7 @@ class DashboardView(ctk.CTkFrame):
         self.entry_dn = self._add_form_row(scroll_params, "Diamètre principal conduite (m) :", str(self.project.dn_main_conduite_m))
         self.combo_mat = self._add_combo_row(scroll_params, "Matériau de la conduite :", list(PIPE_MATERIALS.keys()), self.project.pipe_material)
         self._catalog_label_to_key = {
-            CATALOG_CONFIG_LABELS[CATALOG_PAM_SNH]: CATALOG_PAM_SNH,
-            CATALOG_CONFIG_LABELS[CATALOG_CEAI_SNH]: CATALOG_CEAI_SNH,
+            label: key for key, label in CATALOG_CONFIG_LABELS.items()
         }
         catalog_labels = list(self._catalog_label_to_key.keys())
         current_catalog_label = CATALOG_CONFIG_LABELS.get(
@@ -121,12 +120,26 @@ class DashboardView(ctk.CTkFrame):
         scroll_audit = ctk.CTkScrollableFrame(audit_box, fg_color="transparent")
         scroll_audit.pack(fill="both", expand=True, padx=15, pady=5)
 
-        audit_text = (
+        self.audit_lbl = ctk.CTkLabel(
+            scroll_audit,
+            text=self._audit_text(),
+            font=ctk.CTkFont(family="Consolas", size=11),
+            justify="left",
+            text_color=("gray20", "gray85")
+        )
+        self.audit_lbl.pack(anchor="w", padx=10, pady=5)
+
+    def _audit_text(self) -> str:
+        """Synthèse des formules, avec coefficient de vidange lié au temps cible."""
+        target_h = float(getattr(self.project, "target_drain_time_hours", 2.0) or 2.0)
+        coeff = drain_formula_coefficient(target_h, self.project.drain_discharge_k)
+        return (
             "✅ FORMULES EXACTES CORRIGÉES :\n\n"
             "• Vidanges (Points Bas) :\n"
-            "  d (mm) = 6.69 × D × √(L_tot / √h_moy) pour t = 2h\n"
+            f"  d (mm) = {coeff:.3f} × D × √(L_tot / √h_moy) pour t = {target_h:g}h\n"
             "  où h_moy = [Lam × (Ham/2) + Lav × (Hav/2)] / (Lam + Lav)\n"
-            "  (Le coefficient 13.39 de l'ancienne note correspondait à 30 min !)\n\n"
+            "  (Coefficient recalculé : 6.693 pour 2 h, 9.465 pour 1 h ;\n"
+            "   le DN retenu est imposé égal au DN recommandé en mode auto.)\n\n"
             "• Célérité d'Allievi (Conduite PRV) :\n"
             "  a = 1 / √[ ρ × ( 1/K_eau + D/(E × e) ) ]\n"
             "  avec Keau = 2.07 GPa, E = 20 GPa (PRV) -> a ≈ 548 m/s.\n\n"
@@ -142,15 +155,6 @@ class DashboardView(ctk.CTkFrame):
             "  Nécessite au moins 2 ventouses DN 200 (5 300 m³/h chacune sous 1 mCE).\n"
         )
 
-        audit_lbl = ctk.CTkLabel(
-            scroll_audit,
-            text=audit_text,
-            font=ctk.CTkFont(family="Consolas", size=11),
-            justify="left",
-            text_color=("gray20", "gray85")
-        )
-        audit_lbl.pack(anchor="w", padx=10, pady=5)
-
     def _render_kpi_cards(self):
         for widget in self.kpi_frame.winfo_children():
             widget.destroy()
@@ -165,7 +169,11 @@ class DashboardView(ctk.CTkFrame):
 
         # Carte 2: Vidanges
         d_ratio = f"{stats['drains_compliant']} / {stats['total_drains']}"
-        d_sub = "Temps <= 2h respecté" if stats['drains_non_compliant'] == 0 else f"{stats['drains_non_compliant']} tronçon(s) > 2h !"
+        target_label = f"{float(self.project.target_drain_time_hours or 2.0):g}h"
+        d_sub = (
+            f"Temps <= {target_label} respecté" if stats['drains_non_compliant'] == 0
+            else f"{stats['drains_non_compliant']} tronçon(s) > {target_label} !"
+        )
         d_color = "#2ED573" if stats['drains_non_compliant'] == 0 else "#FF4757"
         self._create_card(self.kpi_frame, 1, "💧 Points Bas (Vidanges)", d_ratio, d_sub, d_color)
 
@@ -237,6 +245,8 @@ class DashboardView(ctk.CTkFrame):
 
     def refresh(self):
         self._render_kpi_cards()
+        if hasattr(self, "audit_lbl"):
+            self.audit_lbl.configure(text=self._audit_text())
         if hasattr(self, "title_lbl"):
             self.title_lbl.configure(text=f"📊 Tableau de Bord Hydraulique — {self.project.name}")
         if hasattr(self, "desc_lbl"):

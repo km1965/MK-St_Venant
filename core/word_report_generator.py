@@ -44,6 +44,79 @@ def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
     tcPr.append(tcMar)
 
 
+def _add_key_value_table(doc, rows, headers=("Information", "Valeur")):
+    """Ajoute un tableau à deux colonnes (libellé / valeur) stylé."""
+    table = doc.add_table(rows=len(rows) + 1, cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    for c_idx, title in enumerate(headers):
+        cell = table.rows[0].cells[c_idx]
+        cell.text = str(title)
+        set_cell_background(cell, "1F497D")
+        set_cell_margins(cell, 80, 80, 100, 100)
+        run = cell.paragraphs[0].runs[0]
+        run.font.name = "Segoe UI"
+        run.font.bold = True
+        run.font.size = Pt(9.5)
+        run.font.color.rgb = RGBColor(255, 255, 255)
+
+    for r_idx, (key, value) in enumerate(rows, 1):
+        c_key, c_val = table.rows[r_idx].cells
+        for c_idx, (cell, text) in enumerate(((c_key, key), (c_val, value))):
+            cell.text = str(text)
+            set_cell_margins(cell, 70, 70, 100, 100)
+            set_cell_background(cell, "F2F5F8" if r_idx % 2 == 1 else "FFFFFF")
+            run = cell.paragraphs[0].runs[0]
+            run.font.name = "Segoe UI"
+            run.font.size = Pt(9)
+            if c_idx == 0:
+                run.font.bold = True
+                run.font.color.rgb = COLOR_NAVY
+    return table
+
+
+def _localisation(identity) -> str:
+    """Recompose le lieu du projet à partir des champs renseignés."""
+    return ", ".join(
+        part for part in (
+            getattr(identity, "lieu", ""), getattr(identity, "commune", ""),
+            getattr(identity, "province", ""), getattr(identity, "pays", ""),
+        ) if str(part or "").strip()
+    )
+
+
+def _default_preamble(project) -> str:
+    identity = project.identity
+    mo = identity.maitre_ouvrage or "le Maître d'Ouvrage"
+    bet = identity.bureau_etudes or "le Bureau d'Études Techniques (BET)"
+    lieu = _localisation(identity) or "du site du projet"
+    return (
+        f"Le présent rapport d'expertise technique et hydraulique est établi à la demande de {mo}, "
+        f"avec l'assistance de {bet}, dans le cadre du projet « {project.name} » sis à {lieu}. "
+        "Il a pour objet la vérification, le dimensionnement et l'audit des organes de sécurité "
+        "de l'adduction (ventouses aux points hauts et ouvrages de vidange aux points bas), "
+        "sur la base des règles de l'art, des lois de la mécanique des fluides compressibles "
+        "et des hypothèses explicitées dans le présent document."
+    )
+
+
+def _default_introduction(project) -> str:
+    identity = project.identity
+    lieu = _localisation(identity)
+    complement = f" Il est implanté à {lieu}." if lieu else ""
+    return (
+        "La présente étude hydraulique a pour objet le contrôle, la vérification et le dimensionnement optimal "
+        "des ouvrages de vidange des points bas et des ventouses d'aération/purge des points hauts pour l'adduction "
+        f"« {project.name} ».{complement} "
+        f"Le tracé est équipé d'une conduite principale en {project.pipe_material} de diamètre nominal "
+        f"DN {int(project.dn_main_conduite_m * 1000)} mm (épaisseur {project.pipe_thickness_m * 1000:.1f} mm), "
+        f"transitant un débit d'eau nominal de {project.q_nominal_water_m3s} m³/s. "
+        "L'analyse distingue trois fonctions : le dégazage continu sous pression de service, "
+        "l'évacuation de l'air lors du remplissage et l'admission d'air en cas de casse franche."
+    )
+
+
 def generate_word_report(
     project: HydraulicProject,
     output_docx_path: str,
@@ -85,7 +158,7 @@ def generate_word_report(
 
     p_meta = doc.add_paragraph()
     p_meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_meta = p_meta.add_run(f"Document conforme aux lois d'écoulement compressible (Saint-Venant), d'Allievi et de Strickler-Bernoulli\nApplication MK-St_Venant v1.0")
+    run_meta = p_meta.add_run(f"Document conforme aux lois d'écoulement compressible (Saint-Venant), d'Allievi et de Strickler-Bernoulli\nApplication MK-St_Venant v1.2.0")
     run_meta.font.name = "Segoe UI"
     run_meta.font.size = Pt(9.5)
     run_meta.font.italic = True
@@ -93,19 +166,54 @@ def generate_word_report(
 
     doc.add_paragraph().paragraph_format.space_after = Pt(10)
 
-    # 2. SYNTHÈSE DES PARAMÈTRES ET DU PROJET
-    h1 = doc.add_heading("1. Synthèse du Projet et Hypothèses Générales", level=1)
-    h1.style.font.color.rgb = COLOR_NAVY
+    # 1. IDENTITÉ DU PROJET, PRÉAMBULE ET INTRODUCTION
+    h_identity = doc.add_heading("1. Identification du Projet, Préambule et Introduction", level=1)
+    h_identity.style.font.color.rgb = COLOR_NAVY
 
+    identity = getattr(project, "identity", None)
+    if identity is None:
+        from core.project_data import ProjectIdentity
+        identity = ProjectIdentity()
+
+    id_rows = [
+        ("Intitulé du projet", project.name),
+        ("Objet / Description", project.description),
+        ("Maître d'Ouvrage (MO)", identity.maitre_ouvrage or "—"),
+        ("Maître d'Œuvre", identity.maitre_oeuvre or "—"),
+        ("Bureau d'Études Techniques (BET)", identity.bureau_etudes or "—"),
+        ("Lieu", _localisation(identity) or "—"),
+        ("N° de marché / lot", identity.numero_marche or "—"),
+        ("Année", identity.annee or "—"),
+        ("Responsable du projet", identity.responsable_projet or "—"),
+        ("Date de l'étude", identity.date_etude or "—"),
+        ("Référence dossier", identity.reference_dossier or "—"),
+    ]
+    _add_key_value_table(doc, id_rows, headers=("Identification", "Renseignement"))
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+
+    h_pre = doc.add_heading("1.1 Préambule", level=2)
+    h_pre.style.font.color.rgb = COLOR_TEAL
+    p_pre = doc.add_paragraph(identity.preamble.strip() if identity.preamble.strip() else _default_preamble(project))
+    p_pre.style.font.name = "Segoe UI"
+    p_pre.style.font.size = Pt(10)
+    p_pre.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    h_intro = doc.add_heading("1.2 Introduction", level=2)
+    h_intro.style.font.color.rgb = COLOR_TEAL
     p_intro = doc.add_paragraph(
-        f"La présente étude hydraulique a pour objet le contrôle, la vérification et le dimensionnement optimal "
-        f"des ouvrages de vidange des points bas et des ventouses d'aération/purge des points hauts pour l'adduction "
-        f"« {project.name} ».\n"
-        f"Le tracé est équipé d'une conduite principale en {project.pipe_material} de diamètre nominal DN {int(project.dn_main_conduite_m*1000)} mm "
-        f"(épaisseur {project.pipe_thickness_m*1000:.1f} mm), transitant un débit d'eau nominal de {project.q_nominal_water_m3s} m³/s."
+        identity.introduction.strip() if identity.introduction.strip() else _default_introduction(project)
     )
     p_intro.style.font.name = "Segoe UI"
     p_intro.style.font.size = Pt(10)
+    p_intro.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    # 2. SYNTHÈSE DES PARAMÈTRES ET DU PROJET
+    h1 = doc.add_heading("2. Synthèse du Projet et Hypothèses Générales", level=1)
+    h1.style.font.color.rgb = COLOR_NAVY
+
+    doc.add_paragraph(
+        "Les hypothèses et paramètres retenus pour les calculs sont synthétisés dans le tableau ci-dessous."
+    ).style.font.name = "Segoe UI"
 
     # Tableau des hypothèses
     catalog_label = CATALOG_CONFIG_LABELS.get(
@@ -115,7 +223,7 @@ def generate_word_report(
 
     params_rows = [
         ("Paramètre Hydraulique", "Valeur Retenue", "Justification & Référence Normative"),
-        ("Base catalogue organes d'air", catalog_label, "Catalogue sélectionné pour le dimensionnement (référence CEAI/SNH ou PAM/SNH existant)"),
+        ("Base catalogue organes d'air", catalog_label, "Catalogue sélectionné pour le dimensionnement (CEAI/SNH, PAM/SNH ou MCP — tableau Excel)"),
         ("Diamètre Conduite Principale", f"DN {int(project.dn_main_conduite_m*1000)} mm", "Profil en long de l'adduction"),
         ("Matériau & Coefficient Strickler", f"{project.pipe_material} (Ks = {project.ks_strickler})", "Pertes de charge linéaires régulières"),
         ("Célérité d'Allievi calculée", f"a = {stats['wave_speed_allievi_ms']} m/s", "Formule exacte avec compressibilité de l'eau (2.07 GPa)"),
@@ -150,7 +258,7 @@ def generate_word_report(
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # 3. PRINCIPES ET FORMULES HYDRAULIQUES APPLIQUÉES
-    h2 = doc.add_heading("2. Principes et Formules Hydrauliques Appliquées", level=1)
+    h2 = doc.add_heading("3. Principes et Formules Hydrauliques Appliquées", level=1)
     h2.style.font.color.rgb = COLOR_NAVY
 
     doc.add_paragraph(
@@ -213,7 +321,7 @@ def generate_word_report(
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # 4. TABLEAU DES VENTOUSES (POINTS HAUTS)
-    h3 = doc.add_heading("3. Dimensionnement et Vérification des Points Hauts (Ventouses)", level=1)
+    h3 = doc.add_heading("4. Dimensionnement et Vérification des Points Hauts (Ventouses)", level=1)
     h3.style.font.color.rgb = COLOR_NAVY
 
     doc.add_paragraph(
@@ -266,7 +374,7 @@ def generate_word_report(
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # 5. TABLEAU DES VIDANGES (POINTS BAS)
-    h4 = doc.add_heading("4. Dimensionnement et Vérification des Points Bas (Vidanges)", level=1)
+    h4 = doc.add_heading("5. Dimensionnement et Vérification des Points Bas (Vidanges)", level=1)
     h4.style.font.color.rgb = COLOR_NAVY
 
     doc.add_paragraph(
@@ -282,7 +390,8 @@ def generate_word_report(
 
     drains_headers = [
         "PM (m)", "DN Conduite (m)", "L Totale (m)", "hmoy (m)",
-        "d exact 2h (mm)", "DN Recommandé (mm)", "Temps avec DN 400"
+        f"d exact t={project.target_drain_time_hours:g}h (mm)",
+        "DN Recommandé (mm)", "Temps avec DN retenu"
     ]
 
     for c_idx, h in enumerate(drains_headers):
@@ -301,7 +410,7 @@ def generate_word_report(
         vals = [
             f"{d.pm:,.2f}", f"{d.dn_conduite_m:.1f}", f"{d.l_total_m:,.2f}",
             f"{d.h_moy_m:.2f}", f"{d.d_exact_mm:.1f}", f"DN {d.dn_recommended_mm}",
-            f"{d.t_real_str} ({'Conforme' if d.is_compliant else 'Alerte > 2h'})"
+            f"{d.t_real_str} ({'Conforme' if d.is_compliant else f'Alerte > {project.target_drain_time_hours:g}h'})"
         ]
         for c_idx, val in enumerate(vals):
             cell = row.cells[c_idx]
@@ -325,7 +434,7 @@ def generate_word_report(
 
     # 6. INSERTION DES GRAPHIQUES SI DISPONIBLES
     if include_charts:
-        h5 = doc.add_heading("5. Profils et Analyses Graphiques", level=1)
+        h5 = doc.add_heading("6. Profils et Analyses Graphiques", level=1)
         h5.style.font.color.rgb = COLOR_NAVY
 
         # Génération temporaire des graphiques si nécessaire
@@ -364,7 +473,7 @@ def generate_word_report(
             doc.add_paragraph(f"[Graphique vidanges non inséré : {e}]")
 
     # 7. CONCLUSIONS ET RECOMMANDATIONS D'EXPLOITATION
-    h6 = doc.add_heading("6. Recommandations et Prescriptions Techniques", level=1)
+    h6 = doc.add_heading("7. Recommandations et Prescriptions Techniques", level=1)
     h6.style.font.color.rgb = COLOR_NAVY
 
     recomms: list[str] = []

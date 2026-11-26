@@ -14,6 +14,8 @@ project_dir = Path(SPECPATH).resolve()
 datas = []
 datas += collect_data_files("customtkinter")
 datas += [(str(project_dir / "assets"), "assets")]
+# Catalogue source MCP joint au livrable pour traçabilité des débits utilisés.
+datas += [(str(project_dir / "Tableau_Recapitulatif_Debits_Ventouses_MCP.xlsx"), ".")]
 
 hiddenimports = []
 hiddenimports += collect_submodules("customtkinter")

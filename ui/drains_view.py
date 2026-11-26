@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox
 from typing import Callable, Optional
 from core.project_data import HydraulicProject, DrainPoint
 from core.catalog import STANDARD_DRAIN_DIAMETERS_MM
+from core.hydraulic_models import drain_formula_coefficient
 
 
 class DrainsView(ctk.CTkFrame):
@@ -36,16 +37,16 @@ class DrainsView(ctk.CTkFrame):
         title.pack(side="left")
 
         # Boutons d'action
-        btn_apply_rec = ctk.CTkButton(
+        self.btn_apply_rec = ctk.CTkButton(
             top_row,
-            text="✨ Appliquer DN Recommandés (100% <= 2h)",
+            text="✨ Appliquer DN Recommandés",
             fg_color="#00B894",
             hover_color="#00A884",
             font=ctk.CTkFont(size=12, weight="bold"),
             height=32,
             command=self._apply_all_recommended_dn
         )
-        btn_apply_rec.pack(side="right", padx=(5, 0))
+        self.btn_apply_rec.pack(side="right", padx=(5, 0))
 
         btn_auto = ctk.CTkButton(
             top_row,
@@ -80,14 +81,14 @@ class DrainsView(ctk.CTkFrame):
         )
         btn_add.pack(side="right", padx=(5, 0))
 
-        # Instructions / Formules
-        info_lbl = ctk.CTkLabel(
+        # Instructions / Formules (coefficient recalculé selon le temps cible)
+        self.info_lbl = ctk.CTkLabel(
             header,
-            text="Formule exacte : d (mm) = 6.69 × D × √(L_tot / √h_moy) pour vidange en 2h | Hauteur pondérée h_moy = [Lam·(Ham/2) + Lav·(Hav/2)] / L_tot",
+            text="",
             font=ctk.CTkFont(size=11),
             text_color=("gray50", "gray70")
         )
-        info_lbl.pack(anchor="w", padx=15, pady=(0, 10))
+        self.info_lbl.pack(anchor="w", padx=15, pady=(0, 10))
 
         # Tableau Treeview
         table_container = ctk.CTkFrame(self, fg_color=("white", "#1E272E"), corner_radius=10)
@@ -110,7 +111,7 @@ class DrainsView(ctk.CTkFrame):
             "l_tot": ("L totale (m)", 90, "e"),
             "h_moy": ("hmoy (m)", 75, "e"),
             "vol_eau": ("Vol. Eau (m³)", 95, "e"),
-            "d_exact": ("d exact 2h (mm)", 110, "e"),
+            "d_exact": ("d exact (mm)", 110, "e"),
             "dn_rec": ("DN Recommandé", 110, "center"),
             "dn_ret": ("DN Retenu Projet", 110, "center"),
             "t_reel": ("Temps Réel", 90, "center"),
@@ -169,13 +170,31 @@ class DrainsView(ctk.CTkFrame):
         self.refresh()
 
     def refresh(self):
-        """Recharge les données du tableau."""
+        """Recharge les données du tableau avec le temps cible courant."""
+        target_h = float(getattr(self.project, "target_drain_time_hours", 2.0) or 2.0)
+        coeff = drain_formula_coefficient(target_h, self.project.drain_discharge_k)
+        target_label = f"{target_h:g}h"
+
+        self.info_lbl.configure(
+            text=(
+                f"Formule exacte : d (mm) = {coeff:.3f} × D × √(L_tot / √h_moy) pour un objectif t = {target_label} "
+                f"| h_moy = [Lam·(Ham/2) + Lav·(Hav/2)] / L_tot "
+                f"| DN retenu = DN recommandé en mode auto ; le temps réel dépend du DN réellement posé."
+            )
+        )
+        self.btn_apply_rec.configure(text=f"✨ Appliquer DN Recommandés (100% <= {target_label})")
+        self.tree.heading("d_exact", text=f"d exact t={target_label} (mm)")
+        self.tree.heading("dn_rec", text=f"DN Recommandé t={target_label}")
+
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         for d in self.project.drains:
             tag = "compliant" if d.is_compliant else "non_compliant"
-            status_text = "CONFORME (<= 2h)" if d.is_compliant else f"ALERTE ({d.t_real_str} > 2h)"
+            status_text = (
+                f"CONFORME (<= {target_label})" if d.is_compliant
+                else f"ALERTE ({d.t_real_str} > {target_label})"
+            )
 
             self.tree.insert("", "end", iid=str(d.id), values=(
                 d.id,
@@ -196,14 +215,21 @@ class DrainsView(ctk.CTkFrame):
     def _apply_all_recommended_dn(self):
         for d in self.project.drains:
             d.dn_retained_mm = d.dn_recommended_mm
+            d.auto_dn_retained = True
         self.project.calculate_all()
         self.refresh()
         self.on_project_updated()
-        messagebox.showinfo("DN Recommandés Appliqués", "Tous les points bas ont été dimensionnés avec le DN optimal (vidange <= 2h).")
+        target_h = float(self.project.target_drain_time_hours or 2.0)
+        messagebox.showinfo(
+            "DN Recommandés Appliqués",
+            f"Tous les points bas sont dimensionnés avec le DN optimal (vidange <= {target_h:g}h). "
+            "Le mode automatique est activé : le DN retenu suivra le temps cible."
+        )
 
     def _apply_uniform_400(self):
         for d in self.project.drains:
             d.dn_retained_mm = 400
+            d.auto_dn_retained = False
         self.project.calculate_all()
         self.refresh()
         self.on_project_updated()
@@ -285,6 +311,17 @@ class DrainsView(ctk.CTkFrame):
         combo_dn.set(str(drain.dn_retained_mm) if drain else "400")
         combo_dn.pack(side="right", fill="x", expand=True)
 
+        chk_auto_dn = ctk.CTkCheckBox(
+            content,
+            text="Imposer le DN recommandé comme DN retenu (mode auto)",
+            font=ctk.CTkFont(size=11),
+        )
+        if drain is None or drain.auto_dn_retained:
+            chk_auto_dn.select()
+        else:
+            chk_auto_dn.deselect()
+        chk_auto_dn.pack(anchor="w", padx=20, pady=(6, 2))
+
         def save_action():
             try:
                 pm = float(e_pm.get().replace(',', '.'))
@@ -295,6 +332,7 @@ class DrainsView(ctk.CTkFrame):
                 pm_av = float(e_pm_av.get().replace(',', '.')) if e_pm_av.get().strip() else None
                 z_av = float(e_z_av.get().replace(',', '.')) if e_z_av.get().strip() else None
                 dn_ret = int(combo_dn.get())
+                auto_dn = bool(chk_auto_dn.get())
 
                 if drain:
                     drain.pm = pm
@@ -305,12 +343,14 @@ class DrainsView(ctk.CTkFrame):
                     drain.pm_aval = pm_av
                     drain.z_aval = z_av
                     drain.dn_retained_mm = dn_ret
+                    drain.auto_dn_retained = auto_dn
                 else:
                     new_id = max([d.id for d in self.project.drains], default=0) + 1
                     new_d = DrainPoint(
                         id=new_id, pm=pm, z_terrain=z, dn_conduite_m=dn,
                         pm_amont=pm_am, z_amont=z_am, pm_aval=pm_av, z_aval=z_av,
-                        dn_retained_mm=dn_ret
+                        dn_retained_mm=dn_ret,
+                        auto_dn_retained=auto_dn
                     )
                     self.project.drains.append(new_d)
 

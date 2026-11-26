@@ -324,6 +324,19 @@ def calculate_air_valve_full_analysis(
 # ==============================================================================
 # 5. VIDANGES DES POINTS BAS
 # ==============================================================================
+def drain_formula_coefficient(target_time_hours: float, discharge_coeff_k: float = 0.70) -> float:
+    """Coefficient de la formule du diamètre théorique de vidange.
+
+        coeff(t) = 1000 / sqrt( t_sec * K * sqrt(2*g) )
+
+    Il vaut 6.693 pour t = 2 h et K = 0.70 (d'où la formule historique
+    « 6.69 × D × √(L_tot / √h_moy) »), mais il est recalculé pour TOUT
+    temps cible saisi : 9.465 pour 1 h, 13.390 pour 30 min, etc.
+    """
+    t_sec = max(0.01, float(target_time_hours or 0.0)) * 3600.0
+    return 1000.0 / math.sqrt(t_sec * discharge_coeff_k * math.sqrt(2.0 * G))
+
+
 def calculate_drain_dimensioning(
     dn_pipe_m: float,
     l_upstream_m: float,
@@ -354,9 +367,11 @@ def calculate_drain_dimensioning(
         d_theorique (mm) = sqrt( V_eau / [ K * (pi/4) * sqrt(2*g*h_moy) * t_sec ] ) * 1000
                          = (D / sqrt(t_sec)) * sqrt( L_tot / (K * sqrt(2*g*h_moy)) ) * 1000
 
-        Pour t = 2h (7200 s), K = 0.70, g = 9.81 :
-            coeff = 1000 / sqrt( 7200 * 0.70 * sqrt(2 * 9.81) ) = 6.693
-            d_theorique (mm) = 6.69 * D * sqrt( L_tot / sqrt(h_moy) )
+        Le coefficient est recalculé pour le temps cible saisi :
+            coeff(t) = 1000 / sqrt( t_sec * K * sqrt(2*g) )
+        Pour t = 2 h, K = 0.70 : coeff = 6.693 (formule historique « 6.69 »).
+        Pour t = 1 h : coeff = 9.465. Le temps cible modifie donc bien le
+        diamètre théorique, le DN recommandé et le DN retenu.
 
         Temps réel de vidange avec un diamètre donné d_reel :
             t_reel (heures) = t_cible * (d_theorique / d_reel)^2
@@ -386,9 +401,11 @@ def calculate_drain_dimensioning(
     coeff_exact = 1000.0 / math.sqrt(t_sec * discharge_coeff_k * math.sqrt(2.0 * G))
     d_exact_mm = coeff_exact * dn_pipe_m * math.sqrt(l_tot / math.sqrt(h_moy))
 
-    # Formule simplifiée avec coeff 6.69 pour t=2h
-    coeff_doc_2h = 6.69
-    d_doc_formula_mm = coeff_doc_2h * dn_pipe_m * math.sqrt(l_tot / math.sqrt(h_moy))
+    # Formule « documentaire » : même expression que coeff_exact, mais le
+    # coefficient est recalculé pour le temps cible saisi (6.693 à 2 h,
+    # 9.465 à 1 h). Aucune valeur n'est figée à 2 heures.
+    coeff_doc = coeff_exact
+    d_doc_formula_mm = coeff_doc * dn_pipe_m * math.sqrt(l_tot / math.sqrt(h_moy))
 
     # Choix du DN normalisé standard recommandé
     from core.catalog import get_standard_dn_drain
@@ -418,6 +435,7 @@ def calculate_drain_dimensioning(
         "h_moy_m": round(h_moy, 2),
         "sqrt_h_moy": round(math.sqrt(h_moy), 4),
         "coeff_exact": round(coeff_exact, 3),
+        "coeff_doc": round(coeff_doc, 3),
         "d_exact_mm": round(d_exact_mm, 1),
         "d_doc_formula_mm": round(d_doc_formula_mm, 1),
         "dn_recommended_mm": dn_recommended,

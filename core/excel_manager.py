@@ -5,6 +5,7 @@ Utilise openpyxl avec un stylage professionnel (en-têtes foncés, bordures, for
 
 from typing import Optional, Dict, Any, Tuple
 import re
+import unicodedata
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -42,6 +43,31 @@ BORDER_THIN = Border(
     top=Side(style='thin', color="D9D9D9"),
     bottom=Side(style='thin', color="D9D9D9")
 )
+
+# Libellés Excel ↔ champs de core.project_data.ProjectIdentity
+IDENTITY_LABEL_TO_FIELD: dict[str, str] = {
+    "Maître d'Ouvrage (MO)": "maitre_ouvrage",
+    "Maitre d'Ouvrage (MO)": "maitre_ouvrage",
+    "MO": "maitre_ouvrage",
+    "Maître d'Œuvre": "maitre_oeuvre",
+    "Maitre d'Oeuvre": "maitre_oeuvre",
+    "Bureau d'Études Techniques (BET)": "bureau_etudes",
+    "BET": "bureau_etudes",
+    "Lieu": "lieu",
+    "Commune": "commune",
+    "Province / Région": "province",
+    "Province": "province",
+    "Région": "province",
+    "Pays": "pays",
+    "N° de marché / lot": "numero_marche",
+    "Numero de marche": "numero_marche",
+    "Année": "annee",
+    "Responsable du projet": "responsable_projet",
+    "Date de l'étude": "date_etude",
+    "Référence dossier": "reference_dossier",
+    "Introduction du rapport": "introduction",
+    "Préambule du rapport": "preamble",
+}
 
 
 def export_project_to_xlsx(project: HydraulicProject, filepath: str):
@@ -130,6 +156,55 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
                 cell_v.fill = FILL_ALERT
                 cell_v.font = FONT_ALERT
 
+    # 1bis. FEUILLE DONNÉES DU PROJET (identité, intro et préambule des rapports)
+    ws_identity = wb.create_sheet(title="Données Projet")
+    ws_identity["A1"] = "IDENTIFICATION DU PROJET — REPRISE AUTOMATIQUE DANS LES RAPPORTS"
+    ws_identity["A1"].font = FONT_TITLE
+
+    identity = getattr(project, "identity", None)
+    identity_labels = {
+        "maitre_ouvrage": "Maître d'Ouvrage (MO)",
+        "maitre_oeuvre": "Maître d'Œuvre",
+        "bureau_etudes": "Bureau d'Études Techniques (BET)",
+        "lieu": "Lieu",
+        "commune": "Commune",
+        "province": "Province / Région",
+        "pays": "Pays",
+        "numero_marche": "N° de marché / lot",
+        "annee": "Année",
+        "responsable_projet": "Responsable du projet",
+        "date_etude": "Date de l'étude",
+        "reference_dossier": "Référence dossier",
+        "introduction": "Introduction du rapport",
+        "preamble": "Préambule du rapport",
+    }
+    identity_rows = [("Intitulé du projet", project.name), ("Description / objet", project.description)]
+    if identity is not None:
+        identity_rows.extend(
+            (identity_labels.get(key, key), value)
+            for key, value in vars(identity).items()
+        )
+    identity_rows.append(("Base catalogue organes d'air", catalog_label))
+
+    for c_idx, header in enumerate(("Information", "Valeur"), 1):
+        cell = ws_identity.cell(row=3, column=c_idx, value=header)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_HEADER_BLUE
+        cell.border = BORDER_THIN
+    for r_idx, (key, value) in enumerate(identity_rows, 4):
+        cell_k = ws_identity.cell(row=r_idx, column=1, value=key)
+        cell_v = ws_identity.cell(row=r_idx, column=2, value=value)
+        cell_k.font = FONT_BOLD
+        cell_v.font = FONT_DATA
+        cell_k.border = BORDER_THIN
+        cell_v.border = BORDER_THIN
+        cell_v.alignment = Alignment(wrap_text=True, vertical="top")
+        if r_idx % 2 == 0:
+            cell_k.fill = FILL_ZEBRA
+            cell_v.fill = FILL_ZEBRA
+    ws_identity.column_dimensions["A"].width = 34
+    ws_identity.column_dimensions["B"].width = 90
+
     # 2. FEUILLE POINTS HAUTS (VENTOUSES)
     ws_valves = wb.create_sheet(title="Points Hauts - Ventouses")
     ws_valves.views.sheetView[0].showGridLines = True
@@ -189,7 +264,8 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
     ws_drains = wb.create_sheet(title="Points Bas - Vidanges")
     ws_drains.views.sheetView[0].showGridLines = True
 
-    ws_drains["A1"] = "TABLEAU DE DIMENSIONNEMENT ET VÉRIFICATION DES VIDANGES (POINTS BAS)"
+    target_label = f"{float(getattr(project, 'target_drain_time_hours', 2.0) or 2.0):g}h"
+    ws_drains["A1"] = f"TABLEAU DE DIMENSIONNEMENT ET VÉRIFICATION DES VIDANGES (POINTS BAS) — OBJECTIF {target_label}"
     ws_drains["A1"].font = FONT_TITLE
 
     headers_drains = [
@@ -197,8 +273,8 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
         "PM Amont", "Cote Amont (m)", "L Amont (m)", "H Amont (m)",
         "PM Aval", "Cote Aval (m)", "L Aval (m)", "H Aval (m)",
         "L Totale (m)", "Hauteur Moy hmoy (m)", "Volume Eau (m3)",
-        "d Théorique Exact 2h (mm)", "DN Recommandé (mm)",
-        "DN Retenu Projet (mm)", "Temps Réel Vidange", "Statut Temps Cible (2h)", "Observations d'Exploitation"
+        f"d Théorique Exact t={target_label} (mm)", "DN Recommandé (mm)",
+        "DN Retenu Projet (mm)", "Temps Réel Vidange", f"Statut Temps Cible ({target_label})", "Observations d'Exploitation"
     ]
 
     for c_idx, h in enumerate(headers_drains, 1):
@@ -217,7 +293,7 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
             d.l_total_m, d.h_moy_m, d.volume_water_m3,
             d.d_exact_mm, d.dn_recommended_mm,
             d.dn_retained_mm, d.t_real_str,
-            "CONFORME (<= 2h)" if d.is_compliant else "NON CONFORME (> 2h)",
+            f"CONFORME (<= {target_label})" if d.is_compliant else f"NON CONFORME (> {target_label})",
             d.comment
         ]
         for c_idx, val in enumerate(vals, 1):
@@ -243,7 +319,7 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
     # 4. FEUILLE CATALOGUE DE MATÉRIEL
     ws_cat = wb.create_sheet(title="Catalogue Équipements")
     ws_cat.views.sheetView[0].showGridLines = True
-    ws_cat["A1"] = f"CATALOGUE DES ÉQUIPEMENTS D'AIR — BASE DE RÉFÉRENCE CEAI/SNH & EXISTANT PAM/SNH ({PRESSION_REFERENCE})"
+    ws_cat["A1"] = f"CATALOGUE DES ÉQUIPEMENTS D'AIR — CEAI/SNH, PAM/SNH ET MCP ({PRESSION_REFERENCE})"
     ws_cat["A1"].font = FONT_TITLE
 
     from core.catalog import PAM_TRIPLE_FUNCTION_VALVES, SNH_AIR_INLET_VALVES
@@ -279,8 +355,18 @@ def export_project_to_xlsx(project: HydraulicProject, filepath: str):
     for dn, spec in SNH_AIR_INLET_VALVES.items():
         _add_cat_row(["Clapet d'Entrée d'Air (existant)", spec.model, f"DN{spec.dn_mm}", spec.admission_flow_3m_m3s, spec.admission_flow_3m_m3h, "-", spec.description])
 
+    # Catalogue MCP (tableau Excel)
+    from core.catalog_mcp import SOURCE_XLSX, VENTOUSES_MCP
+    for v in VENTOUSES_MCP:
+        _add_cat_row([
+            "Ventouse MCP double orifice 3 fonctions", v.dn_label, v.dn_label,
+            round(v.admission_3mce_m3s, 4), v.admission_opt_m3h,
+            f"Évacuation 0,1 bar : {v.evacuation_1mce_m3h:,.0f} m3/h ; admission critique -0,5 bar : {v.admission_crit_m3h:,.0f} m3/h",
+            f"{SOURCE_XLSX} — {v.courbe} ; {v.notes}",
+        ])
+
     # Ajustement largeur automatique des colonnes pour toutes les feuilles
-    for ws in [ws_summary, ws_valves, ws_drains, ws_cat]:
+    for ws in [ws_summary, ws_identity, ws_valves, ws_drains, ws_cat]:
         for col in ws.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
@@ -333,10 +419,45 @@ def create_blank_import_template(filepath: str):
         cell.font = FONT_DATA
         cell.border = BORDER_THIN
 
-    for ws in [ws_valves, ws_drains]:
+    # Feuille Données Projet (identité + textes des rapports)
+    ws_info = wb.create_sheet(title="Données_Projet")
+    for c, header in enumerate(("Champ", "Valeur"), 1):
+        cell = ws_info.cell(row=1, column=c, value=header)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_HEADER_BLUE
+        cell.border = BORDER_THIN
+    info_rows = [
+        ("Intitulé du projet", ""),
+        ("Description / objet", ""),
+        ("Maître d'Ouvrage (MO)", ""),
+        ("Maître d'Œuvre", ""),
+        ("Bureau d'Études Techniques (BET)", ""),
+        ("Lieu", ""),
+        ("Commune", ""),
+        ("Province / Région", ""),
+        ("Pays", ""),
+        ("N° de marché / lot", ""),
+        ("Année", ""),
+        ("Responsable du projet", ""),
+        ("Date de l'étude", ""),
+        ("Référence dossier", ""),
+        ("Introduction du rapport", ""),
+        ("Préambule du rapport", ""),
+    ]
+    for r, (key, value) in enumerate(info_rows, 2):
+        cell_k = ws_info.cell(row=r, column=1, value=key)
+        cell_v = ws_info.cell(row=r, column=2, value=value)
+        cell_k.font = FONT_BOLD
+        cell_v.font = FONT_DATA
+        cell_k.border = BORDER_THIN
+        cell_v.border = BORDER_THIN
+
+    for ws in [ws_valves, ws_drains, ws_info]:
         for col in ws.columns:
             col_letter = get_column_letter(col[0].column)
             ws.column_dimensions[col_letter].width = 22
+    ws_info.column_dimensions["A"].width = 34
+    ws_info.column_dimensions["B"].width = 80
 
     wb.save(filepath)
     return filepath
@@ -351,6 +472,94 @@ def import_project_from_xlsx(filepath: str) -> HydraulicProject:
         name="Projet Importé Excel",
         description=f"Importé depuis {filepath.split('/')[-1].split(chr(92))[-1]}"
     )
+
+    # 0. Feuille « Données Projet » : identité, introduction et préambule
+    sheet_identity = None
+    for sheet_name in wb.sheetnames:
+        normalized_name = _normalize_header(unicodedata.normalize("NFKD", sheet_name).encode("ascii", "ignore").decode())
+        if "donnees projet" in normalized_name or "identite projet" in normalized_name:
+            sheet_identity = wb[sheet_name]
+            break
+    if sheet_identity is not None:
+        labels: Dict[str, Any] = {}
+        for r in range(1, min(sheet_identity.max_row, 60) + 1):
+            key = sheet_identity.cell(row=r, column=1).value
+            value = sheet_identity.cell(row=r, column=2).value
+            if key is None:
+                continue
+            normalized_key = _normalize_header(unicodedata.normalize("NFKD", str(key)).encode("ascii", "ignore").decode())
+            labels[normalized_key] = value
+
+        identity_map = {
+            _normalize_header(unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode()): field
+            for label, field in IDENTITY_LABEL_TO_FIELD.items()
+        }
+        identity_map["intitule du projet"] = "name"
+        identity_map["intitule projet"] = "name"
+        identity_map["description objet"] = "description"
+        identity_map["description / objet"] = "description"
+        for normalized_key, value in labels.items():
+            target = identity_map.get(normalized_key)
+            if target is None:
+                continue
+            text = "" if value is None else str(value).strip()
+            if target in ("name", "description"):
+                if text:
+                    setattr(project, target, text)
+            else:
+                setattr(project.identity, target, text)
+
+    # 0bis. Feuille « Synthèse & Paramètres » : restaurer les paramètres
+    # généraux, notamment le temps objectif qui ne doit jamais retomber à 2 h.
+    sheet_params = None
+    for sheet_name in wb.sheetnames:
+        normalized_name = _normalize_header(
+            unicodedata.normalize("NFKD", sheet_name).encode("ascii", "ignore").decode()
+        )
+        if "synthese" in normalized_name or "parametre" in normalized_name:
+            sheet_params = wb[sheet_name]
+            break
+
+    if sheet_params is not None:
+        param_matchers = [
+            ("temps objectif de vidange", "target_drain_time_hours"),
+            ("coefficient de debit orifice vidange", "drain_discharge_k"),
+            ("diametre principal", "dn_main_conduite_m"),
+            ("vitesse de remplissage", "v_filling_ms"),
+            ("depression admissible", "delta_p_admiss_mce"),
+            ("debit nominal", "q_nominal_water_m3s"),
+            ("coefficient de strickler", "ks_strickler"),
+            ("epaisseur nominale", "pipe_thickness_m"),
+        ]
+        for r in range(1, min(sheet_params.max_row, 80) + 1):
+            key = sheet_params.cell(row=r, column=1).value
+            value = sheet_params.cell(row=r, column=2).value
+            if key is None or value is None:
+                continue
+            nk = _normalize_header(
+                unicodedata.normalize("NFKD", str(key)).encode("ascii", "ignore").decode()
+            )
+            text = str(value).strip()
+
+            if "materiau de la conduite" in nk:
+                project.pipe_material = text
+                continue
+            if "base catalogue" in nk:
+                for cfg_key, cfg_label in CATALOG_CONFIG_LABELS.items():
+                    if text == cfg_label or text == cfg_key:
+                        project.air_catalog_config = cfg_key
+                        break
+                continue
+
+            for fragment, field_name in param_matchers:
+                if fragment in nk:
+                    numeric = parse_float_safe(value)
+                    if numeric is None:
+                        break
+                    if field_name == "pipe_thickness_m":
+                        numeric /= 1000.0
+                    setattr(project, field_name, numeric)
+                    break
 
     # 1. Recherche feuille ventouses
     sheet_valves = None

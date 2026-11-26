@@ -9,7 +9,7 @@ from core.project_data import HydraulicProject
 from core.catalogues_ceai_snh import CATALOG_CONFIG_LABELS, DEFAULT_AIR_CATALOG_CONFIG
 
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.2.0"
 APP_NAME = "MK-St_Venant"
 
 
@@ -74,10 +74,11 @@ class AboutView(ctk.CTkFrame):
             (
                 "1. Nouveau projet ou Ouvrir un projet existant (.mkst.json).\n"
                 "2. Renseigner les paramètres généraux (DN, matériau, épaisseur, Ks, vitesses, ΔP, temps de vidange, base catalogue).\n"
-                "3. Importer les points depuis Excel (Imports/Exports) ou les saisir dans les vues Points Hauts / Points Bas.\n"
-                "4. Vérifier les calculs, ajuster les DN/équipements retenus, appliquer les recommandations si besoin.\n"
-                "5. Enregistrer le projet (Fichier > Enregistrer).\n"
-                "6. Exporter les livrables : rapport Word, classeur Excel de calculs, graphiques HD."
+                "3. Remplir l'onglet « Données du Projet » (MO, BET, lieu, introduction, préambule) pour les rapports.\n"
+                "4. Importer les points depuis Excel (Imports/Exports) ou les saisir dans les vues Points Hauts / Points Bas.\n"
+                "5. Vérifier les calculs, ajuster les DN/équipements retenus, appliquer les recommandations si besoin.\n"
+                "6. Enregistrer le projet (Fichier > Enregistrer).\n"
+                "7. Exporter les livrables : rapport Word, classeur Excel de calculs, graphiques HD."
             ),
         )
 
@@ -85,12 +86,15 @@ class AboutView(ctk.CTkFrame):
             container,
             "3) Bases catalogue et calculs",
             (
-                "• Base catalogue organes d'air sélectionnable : CEAI/SNH (référence) et PAM/SNH (existant), "
-                "configurable dans le Tableau de bord.\n"
+                "• Base catalogue organes d'air sélectionnable : CEAI/SNH (référence), PAM/SNH (existant) et "
+                "MCP (catalogue Excel Tableau_Recapitulatif_Debits_Ventouses_MCP.xlsx), configurable dans le Tableau de bord.\n"
+                "• Les débits MCP sont comparés à 0,3 bar (admission ≈ 3 mCE) et 0,1 bar (évacuation ≈ 1 mCE) ; "
+                "les valeurs critiques -0,5 bar / +0,9 bar et les montages en chandelier sont tracés dans l'onglet Catalogue.\n"
                 "• Les recommandations d'équipements et les contrôles associés dépendent de la base choisie ; "
                 "le rapport et les exports indiquent la base utilisée.\n"
-                "• Vidanges : dimensionnement selon la hauteur moyenne pondérée des branches, le temps objectif "
-                "et le DN retenu (temps réel recalculé).\n"
+                "• Vidanges : dimensionnement selon la hauteur moyenne pondérée des branches et le temps objectif "
+                "(coefficient recalculé : 6,693 à 2 h, 9,465 à 1 h). Le DN recommandé est imposé comme DN retenu "
+                "en mode auto ; le temps réel est recalculé avec le DN posé. Un mode manuel reste disponible.\n"
                 "• Ventouses/points hauts : évaluation des débits d'air requis (casse franche, remplissage, dégazage) "
                 "et de la couverture des équipements retenus/recommandés.\n"
                 "• Vérifiez toujours les hypothèses (cotes, PM, longueurs, topologie amont/aval, matériau, coefficients) "
