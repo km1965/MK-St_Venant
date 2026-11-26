@@ -133,6 +133,7 @@ class AboutView(ctk.CTkFrame):
             footer,
             text=(
                 "MK-St_Venant — Application d'aide au calcul hydraulique. "
+                "Auteur : Mostafa Karim Soussi (km1965) — Licence MIT.\n"
                 "Les résultats doivent être validés par un ingénieur qualifié selon le contexte du projet."
             ),
             font=ctk.CTkFont(size=11),

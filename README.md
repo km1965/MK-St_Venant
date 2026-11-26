@@ -165,4 +165,11 @@ $$Q_{air} = \frac{\pi D^2}{4} \sqrt{\frac{H}{0{,}000587 \cdot \frac{L}{D^{4/3}} 
 ---
 
 ## 📝 Licence & Auteur
+
+**Licence MIT** — voir le fichier [`LICENSE`](LICENSE).
+
+**Auteur** : Mostafa Karim Soussi — [@km1965](https://github.com/km1965)  
+E-mail : mostafakarimsoussi1965@gmail.com  
+Dépôt : https://github.com/km1965/MK-St_Venant
+
 Développé dans le cadre des études d'ingénierie et d'adduction d'eau potable. Conforme aux prescriptions du CCTG et des règles de l'art hydraulique.
